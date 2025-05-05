@@ -52,9 +52,9 @@ public class MiniCompiler {
             
             // Initialize keywords
             keywords = new HashMap<>();
-            keywords.put("int", TokenType.INT);
+            keywords.put("INT", TokenType.INT);
             keywords.put("float", TokenType.FLOAT);
-            keywords.put("string", TokenType.STRING);
+            keywords.put("STRING", TokenType.STRING);
             keywords.put("void", TokenType.VOID);
             keywords.put("if", TokenType.IF);
             keywords.put("else", TokenType.ELSE);
@@ -64,7 +64,7 @@ public class MiniCompiler {
             keywords.put("break", TokenType.BREAK);
             keywords.put("continue", TokenType.CONTINUE);
             keywords.put("Message", TokenType.MESSAGE);
-            keywords.put("do", TokenType.DO);  // Add do keyword
+            keywords.put("do", TokenType.DO);
         }
 
         public Token peekNextToken() {
@@ -569,7 +569,7 @@ public class MiniCompiler {
 
     // Update MessageVisitor
     public static class MessageVisitor implements Visitor {
-        private final Map<String, Double> variables = new HashMap<>();
+        private final Map<String, Object> variables = new HashMap<>();
         private final Map<String, FunctionDecl> functions = new HashMap<>();
 
         @Override
@@ -605,13 +605,13 @@ public class MiniCompiler {
             }
 
             // Create new scope for function call
-            Map<String, Double> oldVariables = new HashMap<>(variables);
+            Map<String, Object> oldVariables = new HashMap<>(variables);
             
             // Set parameter values
             for (int i = 0; i < func.getParameters().size(); i++) {
                 VarDecl param = func.getParameters().get(i);
                 ASTNode arg = node.getArguments().get(i);
-                Double value = evaluateToDouble(arg);
+                Object value = evaluate(arg);
                 System.out.println("Setting parameter " + param.getName().value + " = " + value);
                 variables.put(param.getName().value, value);
             }
@@ -622,7 +622,7 @@ public class MiniCompiler {
                     // Handle local variable declarations
                     VarDecl varDecl = (VarDecl) stmt;
                     if (varDecl.getValue() != null) {
-                        Double value = evaluateToDouble(varDecl.getValue());
+                        Object value = evaluate(varDecl.getValue());
                         variables.put(varDecl.getName().value, value);
                         System.out.println("Set local variable " + varDecl.getName().value + " = " + value);
                     }
@@ -641,7 +641,7 @@ public class MiniCompiler {
         public void visit(VarDecl node) {
             System.out.println("Visiting VarDecl: " + node.getName().value);
             if (node.getValue() != null) {
-                Double value = evaluateToDouble(node.getValue());
+                Object value = evaluate(node.getValue());
                 variables.put(node.getName().value, value);
                 System.out.println("Set variable " + node.getName().value + " = " + value);
             }
@@ -690,10 +690,10 @@ public class MiniCompiler {
         @Override
         public void visit(IfElse node) {
             System.out.println("Visiting IfElse");
-            Double conditionValue = evaluateToDouble(node.getCondition());
+            Object conditionValue = evaluate(node.getCondition());
             System.out.println("Condition value: " + conditionValue);
             
-            if (conditionValue > 0) {
+            if (conditionValue instanceof Double && ((Double) conditionValue) > 0) {
                 System.out.println("Executing if body");
                 node.getIfBody().accept(this);
             } else if (node.getElseBody() != null) {
@@ -705,7 +705,7 @@ public class MiniCompiler {
         @Override
         public void visit(While node) {
             System.out.println("Visiting While loop");
-            while (evaluateToDouble(node.getCondition()) > 0) {
+            while (evaluate(node.getCondition()) instanceof Double && ((Double) evaluate(node.getCondition())) > 0) {
                 System.out.println("While loop iteration");
                 node.getBody().accept(this);
             }
@@ -717,13 +717,13 @@ public class MiniCompiler {
             do {
                 System.out.println("DoWhile loop iteration");
                 node.getBody().accept(this);
-            } while (evaluateToDouble(node.getCondition()) > 0);
+            } while (evaluate(node.getCondition()) instanceof Double && ((Double) evaluate(node.getCondition())) > 0);
         }
 
         @Override
         public void visit(Assignment node) {
             System.out.println("Visiting Assignment: " + node.getIdentifier().value);
-            Double value = evaluateToDouble(node.getValue());
+            Object value = evaluate(node.getValue());
             variables.put(node.getIdentifier().value, value);
             System.out.println("Set variable " + node.getIdentifier().value + " = " + value);
         }
@@ -741,12 +741,12 @@ public class MiniCompiler {
                 return Double.parseDouble(((Number) node).getToken().value);
             } else if (node instanceof Variable) {
                 String varName = ((Variable) node).getToken().value;
-                Double value = variables.get(varName);
+                Object value = variables.get(varName);
                 if (value == null) {
                     System.out.println("Warning: Variable " + varName + " not found, defaulting to 0");
                     return 0.0;
                 }
-                return value;
+                return (Double) value;
             } else if (node instanceof BinaryOp) {
                 BinaryOp op = (BinaryOp) node;
                 Double left = evaluateToDouble(op.getLeft());
@@ -773,13 +773,13 @@ public class MiniCompiler {
             if (node instanceof Number) {
                 return Double.parseDouble(((Number) node).getToken().value);
             } else if (node instanceof StringLiteral) {
-                return node;
+                return ((StringLiteral) node).getToken().value;
             } else if (node instanceof Variable) {
                 String varName = ((Variable) node).getToken().value;
-                Double value = variables.get(varName);
+                Object value = variables.get(varName);
                 if (value == null) {
-                    System.out.println("Warning: Variable " + varName + " not found, defaulting to 0");
-                    return 0.0;
+                    System.out.println("Warning: Variable " + varName + " not found, defaulting to empty string");
+                    return "";
                 }
                 return value;
             } else if (node instanceof BinaryOp) {
@@ -814,7 +814,7 @@ public class MiniCompiler {
         }
 
         private ASTNode parseStatement() {
-            if (currentToken.type == TokenType.INT) {
+            if (currentToken.type == TokenType.INT || currentToken.type == TokenType.STRING) {
                 return parseVarDecl();
             } else if (currentToken.type == TokenType.MESSAGE) {
                 return parseMessage();
@@ -907,25 +907,22 @@ public class MiniCompiler {
         }
 
         private ASTNode parseExpression() {
-            ASTNode left = parseTerm();
+            if (currentToken.type == TokenType.STRING_LITERAL) {
+                Token token = currentToken;
+                eat(TokenType.STRING_LITERAL);
+                return new StringLiteral(token);
+            }
+            return parseTerm();
+        }
+
+        private ASTNode parseTerm() {
+            ASTNode left = parseFactor();
             while (currentToken.type == TokenType.PLUS || 
                    currentToken.type == TokenType.MINUS ||
                    currentToken.type == TokenType.LESS_THAN ||
                    currentToken.type == TokenType.GREATER_THAN ||
                    currentToken.type == TokenType.EQUALS ||
                    currentToken.type == TokenType.NOT_EQUALS) {
-                Token op = currentToken;
-                eat(currentToken.type);
-                ASTNode right = parseTerm();
-                left = new BinaryOp(left, op, right);
-            }
-            return left;
-        }
-
-        private ASTNode parseTerm() {
-            ASTNode left = parseFactor();
-            while (currentToken.type == TokenType.MULTIPLY || 
-                   currentToken.type == TokenType.DIVIDE) {
                 Token op = currentToken;
                 eat(currentToken.type);
                 ASTNode right = parseFactor();
@@ -979,16 +976,67 @@ public class MiniCompiler {
 
         private VarDecl parseVarDecl() {
             Token type = currentToken;
-            eat(TokenType.INT);
+            eat(type.type);  // Eat the type token (INT or STRING)
+            
+            if (currentToken.type != TokenType.IDENTIFIER) {
+                throw new RuntimeException(String.format(
+                    "Syntax Error at line %d: Expected identifier after '%s'",
+                    currentToken.line,
+                    type.value
+                ));
+            }
+            
             Token name = currentToken;
             eat(TokenType.IDENTIFIER);
-            ASTNode value = null;
-            if (currentToken.type == TokenType.ASSIGN) {
-                eat(TokenType.ASSIGN);
+            eat(TokenType.ASSIGN);
+            
+            ASTNode value;
+            if (type.type == TokenType.INT) {
+                if (currentToken.type == TokenType.STRING_LITERAL) {
+                    throw new RuntimeException(String.format(
+                        "Syntax Error at line %d: Cannot assign string literal to INT variable",
+                        currentToken.line
+                    ));
+                }
+                value = parseArithmeticExpression();
+            } else if (type.type == TokenType.STRING) {
+                if (currentToken.type != TokenType.STRING_LITERAL) {
+                    throw new RuntimeException(String.format(
+                        "Syntax Error at line %d: Expected string literal for STRING variable",
+                        currentToken.line
+                    ));
+                }
+                value = parseExpression();
+            } else {
                 value = parseExpression();
             }
+            
             eat(TokenType.SEMICOLON);
             return new VarDecl(type, name, value);
+        }
+
+        private ASTNode parseArithmeticExpression() {
+            ASTNode left = parseTerm();
+            while (currentToken.type == TokenType.PLUS || 
+                   currentToken.type == TokenType.MINUS) {
+                Token op = currentToken;
+                eat(currentToken.type);
+                ASTNode right = parseTerm();
+                left = new BinaryOp(left, op, right);
+            }
+            return left;
+        }
+
+        private ASTNode parseTerm() {
+            ASTNode left = parseFactor();
+            while (currentToken.type == TokenType.MULTIPLY || 
+                   currentToken.type == TokenType.DIVIDE) {
+                Token op = currentToken;
+                eat(currentToken.type);
+                ASTNode right = parseFactor();
+                left = new BinaryOp(left, op, right);
+            }
+            return left;
         }
 
         private FunctionCall parseFunctionCall(Token identifier) {
@@ -1059,9 +1107,6 @@ public class MiniCompiler {
         private JTextArea outputArea;
         private JButton compileButton;
         private JButton clearButton;
-        private JButton addIfButton;
-        private JButton addWhileButton;
-        private JButton addDoWhileButton;
 
         public CompilerUI() {
             setTitle("Mini Compiler");
@@ -1091,15 +1136,9 @@ public class MiniCompiler {
             JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
             compileButton = new JButton("Compile");
             clearButton = new JButton("Clear");
-            addIfButton = new JButton("Add If");
-            addWhileButton = new JButton("Add While");
-            addDoWhileButton = new JButton("Add Do-While");
             
             buttonPanel.add(compileButton);
             buttonPanel.add(clearButton);
-            buttonPanel.add(addIfButton);
-            buttonPanel.add(addWhileButton);
-            buttonPanel.add(addDoWhileButton);
 
             // Add button panel to code panel
             codePanel.add(buttonPanel, BorderLayout.NORTH);
@@ -1127,54 +1166,10 @@ public class MiniCompiler {
             // Set up button actions
             compileButton.addActionListener(e -> compile());
             clearButton.addActionListener(e -> clear());
-            addIfButton.addActionListener(e -> addIfStatement());
-            addWhileButton.addActionListener(e -> addWhileLoop());
-            addDoWhileButton.addActionListener(e -> addDoWhileLoop());
 
             // Add sample code
-            codeArea.setText("int x = 0;\n" +
-                           "if (x > 5) {\n" +
-                           "    Message(\"x is greater than 5\");\n" +
-                           "} else {\n" +
-                           "    Message(\"x is less than or equal to 5\");\n" +
-                           "}\n\n" +
-                           "while (x < 5) {\n" +
-                           "    Message(x);\n" +
-                           "    x = x + 1;\n" +
-                           "}\n\n" +
-                           "do {\n" +
-                           "    Message(x);\n" +
-                           "    x = x + 1;\n" +
-                           "} while (x < 10);");
-        }
-
-        private void addIfStatement() {
-            String ifTemplate = "\nif (condition) {\n" +
-                              "    // Your code here\n" +
-                              "} else {\n" +
-                              "    // Your code here\n" +
-                              "}\n";
-            insertTemplate(ifTemplate);
-        }
-
-        private void addWhileLoop() {
-            String whileTemplate = "\nwhile (condition) {\n" +
-                                 "    // Your code here\n" +
-                                 "}\n";
-            insertTemplate(whileTemplate);
-        }
-
-        private void addDoWhileLoop() {
-            String doWhileTemplate = "\ndo {\n" +
-                                   "    // Your code here\n" +
-                                   "} while (condition);\n";
-            insertTemplate(doWhileTemplate);
-        }
-
-        private void insertTemplate(String template) {
-            int caretPosition = codeArea.getCaretPosition();
-            codeArea.insert(template, caretPosition);
-            codeArea.setCaretPosition(caretPosition + template.indexOf("condition"));
+            codeArea.setText("STRING mess = \"Hello\";\n" +
+                           "Message(mess);");
         }
 
         private void compile() {
