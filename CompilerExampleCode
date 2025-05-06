@@ -1,0 +1,31 @@
+Example :
+STRING Msg = "Famador";
+Message("Hello World");
+INT X = 1;
+INT Y = 2;
+
+Message(Msg);
+Message(X+Y);
+Message(X,Y);
+Message(X+Y,"Hello World");
+Message(X+Y,"Hello World",Msg);
+
+
+INT x = 3;
+if (x > 0) {
+    Message("Positive");
+} else {
+    Message("Non-positive");
+}
+
+
+while (i < 10) {
+    Message(i);
+    i = i + 1;
+}
+
+
+do {
+    Message("At least once");
+    i = i - 1;
+} while (i > 0);
