@@ -1,4 +1,3 @@
-Example :
 STRING Msg = "Famador";
 Message("Hello World");
 INT X = 1;
